@@ -9,40 +9,72 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PROJECT_ID = os.getenv("PROJECT_ID")
 ACTIVE_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
-# 💱 Получение курса валюты к RUB через open.er-api.com
+# 💱 Получение курса валюты или криптовалюты к RUB
 def get_currency_rate_to_rub(query: str) -> str:
-    aliases = {
+    fiat_aliases = {
         "доллар": "USD",
         "евро": "EUR",
         "фунт": "GBP",
         "иена": "JPY",
         "юань": "CNY",
-        "юани": "CNY",
         "франк": "CHF",
         "гривна": "UAH",
         "тенге": "KZT",
         "рупия": "INR"
     }
 
-    for word in query.split():
-        code = aliases.get(word.lower(), word.upper())
-        if len(code) == 3 and code.isalpha():
+    crypto_aliases = {
+        "биткоин": "bitcoin",
+        "btc": "bitcoin",
+        "эфир": "ethereum",
+        "eth": "ethereum",
+        "додж": "dogecoin",
+        "doge": "dogecoin",
+        "usdt": "tether",
+        "тезер": "tether",
+        "bnb": "binancecoin",
+        "ripple": "ripple",
+        "xrp": "ripple",
+        "sol": "solana"
+    }
+
+    words = query.lower().split()
+
+    # 🔸 Криптовалюта
+    for word in words:
+        crypto_id = crypto_aliases.get(word)
+        if crypto_id:
             try:
-                url = f"https://open.er-api.com/v6/latest/{code}"
+                url = f"https://api.coingecko.com/api/v3/simple/price?ids={crypto_id}&vs_currencies=rub"
                 response = requests.get(url, timeout=5)
                 data = response.json()
+                if crypto_id in data and "rub" in data[crypto_id]:
+                    rate = data[crypto_id]["rub"]
+                    return f"💰 Курс {crypto_id.capitalize()}: {rate:.2f} RUB"
+                else:
+                    return f"⚠️ Не удалось получить курс {crypto_id} к RUB."
+            except Exception as e:
+                return f"❌ Ошибка получения курса криптовалюты: {e}"
 
+    # 🔸 Фиат
+    for word in words:
+        fiat_code = fiat_aliases.get(word, word.upper())
+        if len(fiat_code) == 3 and fiat_code.isalpha():
+            try:
+                url = f"https://open.er-api.com/v6/latest/{fiat_code}"
+                response = requests.get(url, timeout=5)
+                data = response.json()
                 if "rates" in data and "RUB" in data["rates"]:
                     rate = data["rates"]["RUB"]
-                    return f"💱 Курс {code}: 1 {code} = {rate:.2f} RUB"
+                    return f"💱 Курс {fiat_code}: 1 {fiat_code} = {rate:.2f} RUB"
                 else:
-                    return f"⚠️ Курс RUB для {code} не найден. Ответ: {data}"
+                    return f"⚠️ Курс RUB для {fiat_code} не найден."
             except Exception as e:
                 return f"❌ Ошибка получения курса: {e}"
 
-    return "❓ Укажите валюту (например: курс доллар, курс EUR, курс фунта)"
+    return "❓ Укажите валюту (например: курс доллар, курс btc, курс eth)"
 
-# 💬 Обработка всех сообщений
+# 💬 Обработка текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.lower()
 
@@ -51,7 +83,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply)
         return
 
-    # 🔁 GPT-ответ через OpenAI API
+    # GPT-ответ
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "OpenAI-Project": PROJECT_ID,
@@ -74,11 +106,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(reply)
 
-# 📍 Команда /model — показать активную модель
+# 📍 Команда /model — текущая модель
 async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🧠 Текущая модель: {ACTIVE_MODEL}")
 
-# ▶️ Запуск бота
+# ▶️ Запуск Telegram-бота
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
