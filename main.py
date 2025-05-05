@@ -32,7 +32,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response_data = response.json()
         model_used = response_data.get("model", "неизвестно")
         reply_text = response_data["choices"][0]["message"]["content"]
-        reply = f"(Модель: {model_used})\n\n{reply_text}"
+        reply = f"(GPT: {model_used})\n\n{reply_text}"
     except Exception as e:
         reply = f"❌ Ошибка: {str(e)}"
 
