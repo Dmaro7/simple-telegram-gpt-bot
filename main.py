@@ -3,38 +3,53 @@ import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
 
-# 📦 Переменные окружения (Railway)
+# 📦 Переменные окружения (настраиваются в Railway)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PROJECT_ID = os.getenv("PROJECT_ID")
-ACTIVE_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")  # можно задать gpt-3.5-turbo или gpt-4
+ACTIVE_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")  # Можно: gpt-3.5-turbo, gpt-4, gpt-4o
 
-# 💱 Функция для получения курса доллара
-def get_usd_to_rub():
-    try:
-        response = requests.get("https://api.exchangerate.host/latest?base=USD&symbols=RUB", timeout=5)
-        data = response.json()
+# 💱 Получение курса любой валюты к RUB
+def get_currency_rate_to_rub(query: str) -> str:
+    aliases = {
+        "доллар": "USD",
+        "евро": "EUR",
+        "фунт": "GBP",
+        "иена": "JPY",
+        "юань": "CNY",
+        "юани": "CNY",
+        "франк": "CHF",
+        "гривна": "UAH",
+        "тенге": "KZT",
+        "рупия": "INR"
+    }
 
-        # Проверяем структуру
-        if "rates" in data and "RUB" in data["rates"]:
-            rate = data["rates"]["RUB"]
-            return f"💵 Курс доллара: 1 USD = {rate:.2f} RUB"
-        else:
-            return "⚠️ Не удалось получить актуальный курс. Попробуйте позже."
-    except Exception as e:
-        return f"❌ Ошибка получения курса: {e}"
+    for word in query.split():
+        code = aliases.get(word.lower(), word.upper())
+        if len(code) == 3 and code.isalpha():
+            try:
+                response = requests.get(f"https://api.exchangerate.host/latest?base={code}&symbols=RUB", timeout=5)
+                data = response.json()
+                if "rates" in data and "RUB" in data["rates"]:
+                    rate = data["rates"]["RUB"]
+                    return f"💱 Курс {code}: 1 {code} = {rate:.2f} RUB"
+                else:
+                    return "⚠️ Не удалось получить курс для этой валюты."
+            except Exception as e:
+                return f"❌ Ошибка получения курса: {e}"
+
+    return "❓ Укажите валюту (например: курс доллар, курс EUR, курс фунта)"
 
 # 💬 Обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.lower()
 
-    # 💱 Если запрос касается курса доллара
-    if "курс доллара" in user_input or "доллар" in user_input:
-        reply = get_usd_to_rub()
+    if "курс" in user_input:
+        reply = get_currency_rate_to_rub(user_input)
         await update.message.reply_text(reply)
         return
 
-    # 🔁 GPT-ответ
+    # 🧠 GPT-ответ через OpenAI API
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "OpenAI-Project": PROJECT_ID,
@@ -57,11 +72,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(reply)
 
-# 🧠 Команда /model — вывод текущей модели
+# 📍 Команда /model — вывод текущей модели
 async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🧠 Текущая модель: {ACTIVE_MODEL}")
 
-# ▶️ Запуск бота
+# ▶️ Запуск Telegram-бота
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
