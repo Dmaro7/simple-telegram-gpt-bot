@@ -9,7 +9,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PROJECT_ID = os.getenv("PROJECT_ID")
 ACTIVE_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
-# 💱 Получение курса валюты или криптовалюты к RUB
+# 💱 Получение курса валют и криптовалют в RUB и USD
 def get_currency_rate_to_rub(query: str) -> str:
     fiat_aliases = {
         "доллар": "USD",
@@ -40,23 +40,33 @@ def get_currency_rate_to_rub(query: str) -> str:
 
     words = query.lower().split()
 
-    # 🔸 Криптовалюта
+    # 🔸 Криптовалюты
     for word in words:
         crypto_id = crypto_aliases.get(word)
         if crypto_id:
             try:
-                url = f"https://api.coingecko.com/api/v3/simple/price?ids={crypto_id}&vs_currencies=rub"
+                url = f"https://api.coingecko.com/api/v3/simple/price?ids={crypto_id}&vs_currencies=rub,usd"
                 response = requests.get(url, timeout=5)
                 data = response.json()
-                if crypto_id in data and "rub" in data[crypto_id]:
-                    rate = data[crypto_id]["rub"]
-                    return f"💰 Курс {crypto_id.capitalize()}: {rate:.2f} RUB"
+
+                if crypto_id in data:
+                    rub = data[crypto_id].get("rub")
+                    usd = data[crypto_id].get("usd")
+
+                    if rub and usd:
+                        return (
+                            f"💰 Курс {crypto_id.capitalize()}:\n"
+                            f"1 {crypto_id.upper()} = {rub:,.2f} RUB\n"
+                            f"1 {crypto_id.upper()} = {usd:,.2f} USD"
+                        )
+                    else:
+                        return f"⚠️ Не удалось получить оба курса для {crypto_id}."
                 else:
-                    return f"⚠️ Не удалось получить курс {crypto_id} к RUB."
+                    return f"⚠️ Не удалось получить данные для {crypto_id}."
             except Exception as e:
                 return f"❌ Ошибка получения курса криптовалюты: {e}"
 
-    # 🔸 Фиат
+    # 🔸 Фиатные валюты
     for word in words:
         fiat_code = fiat_aliases.get(word, word.upper())
         if len(fiat_code) == 3 and fiat_code.isalpha():
@@ -64,17 +74,26 @@ def get_currency_rate_to_rub(query: str) -> str:
                 url = f"https://open.er-api.com/v6/latest/{fiat_code}"
                 response = requests.get(url, timeout=5)
                 data = response.json()
-                if "rates" in data and "RUB" in data["rates"]:
-                    rate = data["rates"]["RUB"]
-                    return f"💱 Курс {fiat_code}: 1 {fiat_code} = {rate:.2f} RUB"
+                rates = data.get("rates", {})
+                rub = rates.get("RUB")
+                usd = rates.get("USD")
+
+                if rub and usd:
+                    return (
+                        f"💱 Курс {fiat_code}:\n"
+                        f"1 {fiat_code} = {rub:,.2f} RUB\n"
+                        f"1 {fiat_code} = {usd:,.2f} USD"
+                    )
+                elif rub:
+                    return f"💱 Курс {fiat_code}: 1 {fiat_code} = {rub:,.2f} RUB"
                 else:
-                    return f"⚠️ Курс RUB для {fiat_code} не найден."
+                    return f"⚠️ Курс RUB или USD для {fiat_code} не найден."
             except Exception as e:
                 return f"❌ Ошибка получения курса: {e}"
 
-    return "❓ Укажите валюту (например: курс доллар, курс btc, курс eth)"
+    return "❓ Укажите валюту (например: курс доллар, курс BTC, курс ETH)"
 
-# 💬 Обработка текстовых сообщений
+# 🧠 Обработка текстовых сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.lower()
 
@@ -83,7 +102,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply)
         return
 
-    # GPT-ответ
+    # 🔁 GPT-ответ через OpenAI API
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "OpenAI-Project": PROJECT_ID,
