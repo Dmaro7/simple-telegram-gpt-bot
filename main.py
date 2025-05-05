@@ -3,13 +3,13 @@ import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
 
-# 📦 Переменные окружения (настраиваются в Railway)
+# 📦 Переменные окружения
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PROJECT_ID = os.getenv("PROJECT_ID")
-ACTIVE_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")  # Можно: gpt-3.5-turbo, gpt-4, gpt-4o
+ACTIVE_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
 
-# 💱 Получение курса любой валюты к RUB
+# 💱 Курс валюты к RUB
 def get_currency_rate_to_rub(query: str) -> str:
     aliases = {
         "доллар": "USD",
@@ -28,13 +28,14 @@ def get_currency_rate_to_rub(query: str) -> str:
         code = aliases.get(word.lower(), word.upper())
         if len(code) == 3 and code.isalpha():
             try:
-                response = requests.get(f"https://api.exchangerate.host/latest?base={code}&symbols=RUB", timeout=5)
+                url = f"https://api.exchangerate.host/latest?base={code}&symbols=RUB"
+                response = requests.get(url, timeout=5)
                 data = response.json()
                 if "rates" in data and "RUB" in data["rates"]:
                     rate = data["rates"]["RUB"]
                     return f"💱 Курс {code}: 1 {code} = {rate:.2f} RUB"
                 else:
-                    return "⚠️ Не удалось получить курс для этой валюты."
+                    return f"⚠️ API не вернул курс RUB для {code}. Ответ: {data}"
             except Exception as e:
                 return f"❌ Ошибка получения курса: {e}"
 
@@ -49,7 +50,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply)
         return
 
-    # 🧠 GPT-ответ через OpenAI API
+    # GPT-ответ через OpenAI API
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "OpenAI-Project": PROJECT_ID,
@@ -72,11 +73,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(reply)
 
-# 📍 Команда /model — вывод текущей модели
+# 📍 Команда /model — текущая модель
 async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🧠 Текущая модель: {ACTIVE_MODEL}")
 
-# ▶️ Запуск Telegram-бота
+# ▶️ Запуск
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
