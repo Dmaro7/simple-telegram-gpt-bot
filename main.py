@@ -3,7 +3,7 @@ import requests
 from telegram import Update
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
 
-# 📦 Переменные окружения
+# 🔐 Переменные окружения
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PROJECT_ID = os.getenv("PROJECT_ID")
@@ -25,7 +25,6 @@ def get_currency_rate_to_rub(query: str) -> str:
 
     words = query.lower().split()
 
-    # Криптовалюты
     for word in words:
         crypto_id = crypto_aliases.get(word)
         if crypto_id:
@@ -46,7 +45,6 @@ def get_currency_rate_to_rub(query: str) -> str:
             except Exception as e:
                 return f"❌ Ошибка получения курса криптовалюты: {e}"
 
-    # Фиат
     for word in words:
         fiat_code = fiat_aliases.get(word, word.upper())
         if len(fiat_code) == 3 and fiat_code.isalpha():
@@ -72,7 +70,7 @@ def get_currency_rate_to_rub(query: str) -> str:
 
     return "❓ Укажите валюту (например: курс доллар, курс BTC, курс ETH)"
 
-# 📰 Новости через NewsAPI
+# 📰 Получение новостей
 def get_top_news(query: str = None) -> str:
     url = "https://newsapi.org/v2/top-headlines"
     params = {
@@ -81,13 +79,17 @@ def get_top_news(query: str = None) -> str:
     }
 
     if query:
-        params["q"] = query
+        params["q"] = query  # глобальный поиск
     else:
-        params["country"] = "ru"
+        params["country"] = "ru"  # только Россия
 
     try:
         response = requests.get(url, params=params, timeout=5)
         data = response.json()
+
+        if data.get("status") != "ok":
+            return f"❌ Ошибка от NewsAPI: {data.get('message', 'Неизвестная ошибка')}"
+
         articles = data.get("articles", [])
         if not articles:
             return "⚠️ Новости не найдены. Попробуй другую тему или просто /news."
@@ -98,10 +100,11 @@ def get_top_news(query: str = None) -> str:
             url = article.get("url", "")
             reply += f"• {title}\n{url}\n\n"
         return reply.strip()
+
     except Exception as e:
         return f"❌ Ошибка получения новостей: {e}"
 
-# 💬 Обработка сообщений
+# 💬 Обработка сообщений (GPT + курс)
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.lower()
 
@@ -110,12 +113,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(reply)
         return
 
-    # GPT
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "OpenAI-Project": PROJECT_ID,
         "Content-Type": "application/json"
     }
+
     data = {
         "model": ACTIVE_MODEL,
         "messages": [{"role": "user", "content": user_input}]
@@ -136,13 +139,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🧠 Текущая модель: {ACTIVE_MODEL}")
 
-# 📰 /news или /news <тема>
+# 📰 /news и /news <тема>
 async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     topic = " ".join(context.args) if context.args else None
     news = get_top_news(topic)
     await update.message.reply_text(news)
 
-# ▶️ Запуск бота
+# ▶️ Запуск
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
