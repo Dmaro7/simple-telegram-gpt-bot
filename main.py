@@ -1,45 +1,40 @@
 import os
 import requests
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, ContextTypes, filters
+from telegram import Update
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
 
-# 📦 Переменные окружения (указываются в Railway)
+# 📦 Переменные окружения (Railway)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PROJECT_ID = os.getenv("PROJECT_ID")
-DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")
-ACTIVE_MODEL = DEFAULT_MODEL  # будет меняться через кнопки
+ACTIVE_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o")  # можно задать gpt-3.5-turbo или gpt-4
 
-# 🔘 Кнопки выбора модели
-def model_selection_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("GPT-3.5", callback_data="gpt-3.5-turbo"),
-            InlineKeyboardButton("GPT-4", callback_data="gpt-4"),
-            InlineKeyboardButton("GPT-4o", callback_data="gpt-4o")
-        ]
-    ])
-
-# 💱 Курс доллара через exchangerate.host
+# 💱 Функция для получения курса доллара
 def get_usd_to_rub():
     try:
-        response = requests.get("https://api.exchangerate.host/latest?base=USD&symbols=RUB")
-        rate = response.json()["rates"]["RUB"]
-        return f"💵 Курс доллара: 1 USD = {rate:.2f} RUB"
+        response = requests.get("https://api.exchangerate.host/latest?base=USD&symbols=RUB", timeout=5)
+        data = response.json()
+
+        # Проверяем структуру
+        if "rates" in data and "RUB" in data["rates"]:
+            rate = data["rates"]["RUB"]
+            return f"💵 Курс доллара: 1 USD = {rate:.2f} RUB"
+        else:
+            return "⚠️ Не удалось получить актуальный курс. Попробуйте позже."
     except Exception as e:
         return f"❌ Ошибка получения курса: {e}"
 
-# 🧠 Ответ от GPT или курс
+# 💬 Обработка сообщений
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.lower()
 
-    # 💬 Если запрос про курс доллара — отвечаем курсом
+    # 💱 Если запрос касается курса доллара
     if "курс доллара" in user_input or "доллар" in user_input:
         reply = get_usd_to_rub()
-        await update.message.reply_text(reply, reply_markup=model_selection_keyboard())
+        await update.message.reply_text(reply)
         return
 
-    # 🔁 Иначе — GPT-ответ
+    # 🔁 GPT-ответ
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
         "OpenAI-Project": PROJECT_ID,
@@ -60,24 +55,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         reply = f"❌ Ошибка: {str(e)}"
 
-    await update.message.reply_text(reply, reply_markup=model_selection_keyboard())
+    await update.message.reply_text(reply)
 
-# 🔘 Обработка кнопок выбора модели
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global ACTIVE_MODEL
-    query = update.callback_query
-    await query.answer()
-
-    selected_model = query.data
-    allowed_models = ["gpt-3.5-turbo", "gpt-4", "gpt-4o"]
-
-    if selected_model in allowed_models:
-        ACTIVE_MODEL = selected_model
-        await query.edit_message_text(f"✅ Модель обновлена на: {ACTIVE_MODEL}")
-    else:
-        await query.edit_message_text("❌ Недопустимая модель.")
-
-# 📍 Команда /model — показать текущую модель
+# 🧠 Команда /model — вывод текущей модели
 async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"🧠 Текущая модель: {ACTIVE_MODEL}")
 
@@ -86,5 +66,4 @@ if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(CommandHandler("model", model_command))
-    app.add_handler(CallbackQueryHandler(button_handler))
     app.run_polling()
